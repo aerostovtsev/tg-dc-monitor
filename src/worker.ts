@@ -149,7 +149,298 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return new Response(raw ?? "[]", { headers: { ...CORS, "Cache-Control": "public, max-age=30" } });
   }
 
-  return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+  // Serve frontend HTML for root
+  return new Response(`<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram DC Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0e1117;--sur:#161b27;--sur2:#1e2536;
+      --br:rgba(255,255,255,0.07);
+      --blue:#2AABEE;--green:#00e5a0;--red:#ff4d4d;--yellow:#f5c518;
+      --text:#e8edf5;--muted:#6b7694;
+      --mono:'Space Mono',monospace;--body:'Inter',sans-serif;
+    }
+    html,body{height:100%}
+    body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh;
+      background-image:radial-gradient(ellipse 80% 40% at 50% -10%,rgba(42,171,238,0.07) 0%,transparent 60%)}
+    .app{max-width:600px;margin:0 auto;padding:24px 16px 48px}
+    .muted{color:var(--muted)}
+
+    /* Header */
+    .header{text-align:center;margin-bottom:24px}
+    .header h1{font-family:var(--mono);font-size:19px;font-weight:700;letter-spacing:-.5px}
+    .header p{font-size:11px;color:var(--muted);margin-top:3px}
+
+    /* Summary */
+    .summary{background:var(--sur);border:1px solid var(--br);border-radius:14px;
+      padding:13px 16px;display:flex;align-items:center;gap:10px;margin-bottom:14px}
+    .sum-status{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:1.5px;padding:4px 9px;border-radius:7px;white-space:nowrap}
+    .sum-status--ok{background:rgba(0,229,160,.12);color:var(--green)}
+    .sum-status--issues{background:rgba(245,197,24,.12);color:var(--yellow)}
+    .sum-status--down{background:rgba(255,77,77,.12);color:var(--red)}
+    .sum-info{flex:1;font-size:13px;color:var(--muted)}
+    .sum-info strong{color:var(--text)}
+    .sum-right{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
+
+    /* Cards */
+    .cards{display:flex;flex-direction:column;gap:9px}
+    .card{background:var(--sur);border:1px solid var(--br);border-radius:13px;padding:14px 16px;
+      animation:slideIn .3s ease both;transition:transform .15s,box-shadow .15s,opacity .2s}
+    .card:hover{transform:translateY(-1px);box-shadow:0 5px 20px rgba(0,0,0,.3)}
+    .card--on{border-color:rgba(0,229,160,.1)}
+    .card--off{border-color:rgba(255,77,77,.15);background:rgba(255,77,77,.02)}
+    .cards--refreshing .card{opacity:.65}
+    @keyframes slideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+    .card__head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+    .card__title-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .card__name{font-family:var(--mono);font-weight:700;font-size:14px}
+    .card__meta{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)}
+    .card__ip{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:9px}
+    .lat-val{font-family:var(--mono);font-size:23px;font-weight:700;display:block;margin-bottom:6px}
+    .lat-unit{font-size:12px;color:var(--muted);margin-left:2px;font-weight:400}
+    .lat-na{font-family:var(--mono);font-size:20px;color:var(--muted)}
+    .lb-wrap{height:3px;background:var(--sur2);border-radius:3px;overflow:hidden;margin-bottom:12px}
+    .lb-fill{height:100%;border-radius:3px;transition:width .5s ease}
+
+    /* Badges */
+    .tbadge,.sbadge{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;padding:2px 6px;border-radius:4px}
+    .tbadge--main{background:rgba(42,171,238,.12);color:var(--blue)}
+    .tbadge--media{background:rgba(180,130,255,.12);color:#b482ff}
+    .tbadge--cdn{background:rgba(245,197,24,.12);color:var(--yellow)}
+    .sbadge--on{background:rgba(0,229,160,.12);color:var(--green)}
+    .sbadge--off{background:rgba(255,77,77,.12);color:var(--red)}
+
+    /* Pulse */
+    .pulse-ring{width:10px;height:10px;border-radius:50%;position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+    .pr--on{background:rgba(0,229,160,.2)}.pr--off{background:rgba(255,77,77,.2)}
+    .pulse-dot{width:6px;height:6px;border-radius:50%;position:relative}
+    .pr--on .pulse-dot{background:var(--green)}.pr--off .pulse-dot{background:var(--red)}
+    .pr--on .pulse-dot::after{content:'';position:absolute;inset:-3px;border-radius:50%;background:rgba(0,229,160,.4);animation:ping 1.5s infinite}
+    @keyframes ping{0%{transform:scale(1);opacity:.8}100%{transform:scale(2.5);opacity:0}}
+
+    /* Sparkline */
+    .sparkline-wrap{margin-top:4px}
+    .sparkline-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;font-family:var(--mono);font-size:10px;color:var(--muted)}
+    .uptime-good{color:var(--green)}.uptime-warn{color:var(--yellow)}.uptime-bad{color:var(--red)}
+
+    /* Skeleton */
+    .sk{background:var(--sur2);border-radius:4px;animation:shimmer 1.4s infinite}
+    .sk--xs{width:32px;height:14px}.sk--sm{width:54px;height:14px}
+    .sk--md{width:90px;height:14px}.sk--lg{width:70px;height:28px}
+    .sk-row{display:flex;align-items:center;gap:8px}
+    @keyframes shimmer{0%,100%{opacity:.4}50%{opacity:.7}}
+
+    .err{background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.2);border-radius:11px;padding:13px;text-align:center;color:var(--red);font-size:13px;margin-bottom:12px}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <h1>Telegram DC Monitor</h1>
+    <p>TCP connect · обновление каждую минуту</p>
+  </header>
+
+  <div class="summary" id="summary">
+    <div class="sk sk--sm"></div>
+    <div class="sk sk--md" style="flex:1"></div>
+    <div class="sk sk--sm"></div>
+  </div>
+
+  <div id="error-box" style="display:none" class="err"></div>
+
+  <div class="cards" id="cards">
+    <!-- skeletons injected by JS -->
+  </div>
+</div>
+
+<script>
+  // ── Config ────────────────────────────────────────────────────────────────
+  // Worker URL will be set after deploy — injected at build or set manually
+  const WORKER_URL = "https://tg-dc-monitor.aerostovtsev.workers.dev";
+
+  const REFRESH_INTERVAL = 60; // seconds
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let currentData = null;
+  let historyCache = {};
+  let countdown = REFRESH_INTERVAL;
+  let initialLoad = true;
+
+  // ── Skeleton ──────────────────────────────────────────────────────────────
+  function renderSkeletons() {
+    const container = document.getElementById("cards");
+    container.innerHTML = Array.from({ length: 12 }, (_, i) => \`
+      <div class="card" style="animation-delay:\${i * 35}ms">
+        <div class="sk-row">
+          <div class="sk sk--sm"></div>
+          <div class="sk sk--md"></div>
+          <div class="sk sk--xs"></div>
+        </div>
+        <div class="sk sk--sm" style="margin-top:10px"></div>
+        <div class="sk sk--lg" style="margin-top:10px"></div>
+      </div>\`).join("");
+  }
+
+  // ── Sparkline SVG ─────────────────────────────────────────────────────────
+  function sparkline(points, w = 140, h = 28) {
+    if (!points || points.length < 2) return "";
+    const BW = 3, GAP = 1;
+    const maxBars = Math.floor(w / (BW + GAP));
+    const vis = points.slice(-maxBars);
+    const maxLat = Math.max(...vis.filter(p => p.latency).map(p => p.latency), 1);
+
+    const bars = vis.map((p, i) => {
+      const bh = p.online && p.latency
+        ? Math.max(3, Math.round((p.latency / maxLat) * (h - 4)))
+        : 3;
+      const color = !p.online ? "#ff4d4d"
+        : p.latency < 80 ? "#00e5a0"
+        : p.latency < 200 ? "#f5c518" : "#ff9040";
+      return \`<rect x="\${i*(BW+GAP)}" y="\${h-bh}" width="\${BW}" height="\${bh}" rx="1" fill="\${color}" opacity="0.85"/>\`;
+    }).join("");
+
+    return \`<svg width="\${w}" height="\${h}" style="display:block">\${bars}</svg>\`;
+  }
+
+  function uptimeClass(pct) {
+    return pct >= 99 ? "uptime-good" : pct >= 95 ? "uptime-warn" : "uptime-bad";
+  }
+
+  // ── Render DC card ─────────────────────────────────────────────────────────
+  function renderCard(dc, history, index) {
+    const latColor = !dc.latency ? null
+      : dc.latency < 80 ? "#00e5a0"
+      : dc.latency < 200 ? "#f5c518" : "#ff4d4d";
+    const pct = dc.latency ? Math.min(100, (dc.latency / 500) * 100) : 0;
+
+    const uptime = history && history.length > 0
+      ? Math.round((history.filter(p => p.online).length / history.length) * 1000) / 10
+      : null;
+
+    const sparkSvg = history && history.length > 1 ? \`
+      <div class="sparkline-wrap">
+        <div class="sparkline-header">
+          <span>24h история</span>
+          \${uptime !== null ? \`<span class="\${uptimeClass(uptime)}">\${uptime}% uptime</span>\` : ""}
+        </div>
+        \${sparkline(history)}
+      </div>\` : "";
+
+    return \`
+      <div class="card \${dc.online ? "card--on" : "card--off"}" style="animation-delay:\${index*40}ms">
+        <div class="card__head">
+          <div class="card__title-row">
+            <span class="pulse-ring \${dc.online ? "pr--on" : "pr--off"}"><span class="pulse-dot"></span></span>
+            <span class="card__name">\${dc.name}</span>
+            <span class="tbadge tbadge--\${dc.type}">\${dc.type.toUpperCase()}</span>
+            <span class="sbadge \${dc.online ? "sbadge--on" : "sbadge--off"}">\${dc.online ? "ONLINE" : "OFFLINE"}</span>
+          </div>
+          <div class="card__meta">
+            <span>\${dc.flag}</span>
+            <span class="muted">\${dc.location}</span>
+          </div>
+        </div>
+        <div class="card__ip muted">\${dc.ip}</div>
+        \${dc.latency !== null
+          ? \`<span class="lat-val">\${dc.latency}<span class="lat-unit">ms</span></span>
+             <div class="lb-wrap"><div class="lb-fill" style="width:\${pct}%;background:\${latColor}"></div></div>\`
+          : \`<span class="lat-na">— ms</span>\`
+        }
+        \${sparkSvg}
+      </div>\`;
+  }
+
+  // ── Render all cards ───────────────────────────────────────────────────────
+  function renderCards(data) {
+    const container = document.getElementById("cards");
+    container.innerHTML = data.dcs
+      .map((dc, i) => renderCard(dc, historyCache[dc.id] || [], i))
+      .join("");
+  }
+
+  // ── Render summary bar ─────────────────────────────────────────────────────
+  function renderSummary(data) {
+    const { online, total, avgLatency } = data.summary;
+    const allOk = online === total;
+    const statusClass = allOk ? "sum-status--ok" : online === 0 ? "sum-status--down" : "sum-status--issues";
+    const statusText = allOk ? "ALL OK" : online === 0 ? "DOWN" : "ISSUES";
+    document.getElementById("summary").innerHTML = \`
+      <span class="sum-status \${statusClass}">\${statusText}</span>
+      <div class="sum-info"><strong>\${online}/\${total}</strong> online · avg <strong>\${avgLatency}ms</strong></div>
+      <span class="sum-right muted" id="countdown">через \${countdown}с</span>\`;
+  }
+
+  // ── Fetch history for all DCs ──────────────────────────────────────────────
+  async function fetchHistory(dcs) {
+    await Promise.all(dcs.map(async (dc) => {
+      try {
+        const res = await fetch(\`\${WORKER_URL}/api/history?id=\${dc.id}\`);
+        historyCache[dc.id] = await res.json();
+      } catch { historyCache[dc.id] = []; }
+    }));
+  }
+
+  // ── Main fetch ─────────────────────────────────────────────────────────────
+  async function fetchStatus() {
+    const errBox = document.getElementById("error-box");
+    const cards = document.getElementById("cards");
+
+    try {
+      const res = await fetch(\`\${WORKER_URL}/api/status\`);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      currentData = data;
+
+      // Fetch history in background (non-blocking)
+      fetchHistory(data.dcs).then(() => {
+        if (currentData) renderCards(currentData);
+      });
+
+      renderSummary(data);
+      cards.classList.remove("cards--refreshing");
+      renderCards(data);
+      errBox.style.display = "none";
+      initialLoad = false;
+    } catch (e) {
+      errBox.textContent = "⚠️ Не удалось получить данные — показаны последние";
+      errBox.style.display = "block";
+      if (initialLoad) cards.innerHTML = "";
+    }
+  }
+
+  // ── Countdown timer ────────────────────────────────────────────────────────
+  function startCountdown() {
+    countdown = REFRESH_INTERVAL;
+    setInterval(() => {
+      countdown--;
+      if (countdown <= 0) {
+        countdown = REFRESH_INTERVAL;
+        // Dim cards while refreshing
+        document.getElementById("cards").classList.add("cards--refreshing");
+        fetchStatus();
+      }
+      const el = document.getElementById("countdown");
+      if (el) el.textContent = \`через \${countdown}с\`;
+    }, 1000);
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  renderSkeletons();
+  fetchStatus().then(startCountdown);
+</script>
+</body>
+</html>
+`, {
+    headers: { "Content-Type": "text/html;charset=UTF-8" },
+  });
 }
 
 // ─── Export ──────────────────────────────────────────────────────────────────
