@@ -26,13 +26,12 @@ const DC_LIST = [
 async function tcpPing(ip: string, port: number, timeoutMs = 3000): Promise<number | null> {
   const start = Date.now();
   try {
-    const socket = connect({ hostname: ip, port }, { secureTransport: "off", allowHalfOpen: false });
-    const writer = socket.writable.getWriter();
+    const socket = connect({ hostname: ip, port }, { secureTransport: "off", allowHalfOpen: true });
 
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
-    const connected = writer.ready.then(() => Date.now() - start);
+    const opened = socket.opened.then(() => Date.now() - start);
 
-    const result = await Promise.race([connected, timeout]);
+    const result = await Promise.race([opened, timeout]);
     await socket.close().catch(() => {});
     return result;
   } catch {

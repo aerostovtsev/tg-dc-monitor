@@ -247,16 +247,21 @@
       const data = await res.json();
       currentData = data;
 
-      // Fetch history in background (non-blocking)
-      fetchHistory(data.dcs).then(() => {
-        if (currentData) renderCards(currentData);
-      });
+      // On first load: wait for history before rendering (prevents flicker)
+      // On subsequent loads: render immediately, update history silently
+      if (initialLoad) {
+        await fetchHistory(data.dcs);
+        initialLoad = false;
+      } else {
+        fetchHistory(data.dcs).then(() => {
+          if (currentData) renderCards(currentData);
+        });
+      }
 
       renderSummary(data);
       cards.classList.remove("cards--refreshing");
       renderCards(data);
       errBox.style.display = "none";
-      initialLoad = false;
     } catch (e) {
       errBox.textContent = "⚠️ Не удалось получить данные — показаны последние";
       errBox.style.display = "block";
